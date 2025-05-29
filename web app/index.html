@@ -1,0 +1,90 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Fajar Store - Panel & Top Up</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <header>
+        <h1>Fajar Store</h1>
+        <p>Solusi Kebutuhan Digital Anda</p>
+    </header>
+
+    <main>
+        <section id="panel-section">
+            <h2>Beli Panel Pterodactyl</h2>
+            <form id="panel-form">
+                <label for="panel-ram">Pilih RAM:</label>
+                <select id="panel-ram" name="ram">
+                    <option value="1GB">1GB RAM - Rp 5.000</option>
+                    <option value="2GB">2GB RAM - Rp 10.000</option>
+                    <option value="4GB">4GB RAM - Rp 18.000</option>
+                    <option value="unlimited">Unlimited RAM - Rp 25.000</option>
+                </select>
+
+                <label for="panel-username">Username Panel:</label>
+                <input type="text" id="panel-username" name="username" required placeholder="Username untuk panel Anda">
+
+                <label for="nomor-wa-panel">Nomor WhatsApp (untuk notifikasi):</label>
+                <input type="tel" id="nomor-wa-panel" name="nomor_wa" required placeholder="Contoh: 6281234567890">
+
+                <button type="submit">Beli Panel Sekarang</button>
+            </form>
+        </section>
+
+        <hr>
+
+        <section id="topup-section">
+            <h2>Top Up Game/Layanan</h2>
+            <form id="topup-form">
+                <label for="topup-provider">Pilih Provider/Game:</label>
+                <select id="topup-provider" name="provider_id">
+                    <!-- Opsi akan diisi oleh JavaScript dari API Order Kuota -->
+                    <option value="">Memuat provider...</option>
+                </select>
+
+                <label for="topup-userid">User ID (atau No. Tujuan):</label>
+                <input type="text" id="topup-userid" name="tujuan" required placeholder="Masukkan User ID Game / Nomor Tujuan">
+
+                <label for="topup-serverid">Server ID (jika ada):</label>
+                <input type="text" id="topup-serverid" name="server_id" placeholder="Opsional, untuk game tertentu">
+
+                <label for="topup-nominal">Pilih Nominal/Produk:</label>
+                <select id="topup-nominal" name="produk_id">
+                    <option value="">Pilih provider dulu...</option>
+                    <!-- Opsi akan diisi oleh JavaScript setelah provider dipilih -->
+                </select>
+
+                <label for="nomor-wa-topup">Nomor WhatsApp (untuk notifikasi):</label>
+                <input type="tel" id="nomor-wa-topup" name="nomor_wa" required placeholder="Contoh: 6281234567890">
+
+                <button type="submit">Top Up Sekarang</button>
+            </form>
+        </section>
+
+        <section id="payment-section" style="display:none;">
+            <h2>Pembayaran</h2>
+            <p>Silakan scan QRIS di bawah ini untuk menyelesaikan pembayaran.</p>
+            <div id="qris-area">
+                <!-- QRIS akan ditampilkan di sini -->
+                <img id="qris-image" src="" alt="Scan QRIS untuk Pembayaran">
+            </div>
+            <p>Total Pembayaran: <strong id="total-pembayaran">Rp 0</strong></p>
+            <p>ID Transaksi Anda: <strong id="id-transaksi">-</strong></p>
+            <small>Setelah pembayaran, status akan dicek otomatis atau konfirmasi manual ke Admin jika diperlukan.</small>
+            <button id="cek-status-pembayaran">Cek Status Pembayaran</button>
+            <button id="batalkan-pembayaran">Batalkan Transaksi</button>
+        </section>
+
+        <div id="result-message" class="message-box" style="display:none;"></div>
+    </main>
+
+    <footer>
+        <p>© 2024 Fajar Store. All rights reserved.</p>
+    </footer>
+
+    <script src="script.js"></script>
+</body>
+</html>
