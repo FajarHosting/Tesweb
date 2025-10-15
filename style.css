@@ -1,0 +1,165 @@
+body {
+    font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+    display: flex;
+    justify-content: center;
+    align-items: flex-start; /* Align to top for longer content */
+    min-height: 100vh;
+    margin: 0;
+    background: linear-gradient(to right, #6dd5ed, #2193b0);
+    color: #333;
+    padding: 20px;
+    box-sizing: border-box;
+}
+
+.container {
+    background-color: #fff;
+    padding: 30px 40px;
+    border-radius: 15px;
+    box-shadow: 0 10px 25px rgba(0, 0, 0, 0.2);
+    text-align: center;
+    max-width: 900px;
+    width: 100%;
+}
+
+h1 {
+    color: #007bff;
+    margin-bottom: 25px;
+    font-size: 2.5em;
+}
+
+.input-section {
+    margin-bottom: 30px;
+    padding: 20px;
+    background-color: #f8f9fa;
+    border-radius: 10px;
+    border: 1px solid #e9ecef;
+}
+
+textarea {
+    width: calc(100% - 20px);
+    height: 100px;
+    padding: 10px;
+    margin-bottom: 15px;
+    border: 1px solid #ced4da;
+    border-radius: 8px;
+    font-size: 1em;
+    resize: vertical;
+}
+
+button {
+    background-color: #007bff;
+    color: white;
+    padding: 12px 25px;
+    border: none;
+    border-radius: 8px;
+    cursor: pointer;
+    font-size: 1.1em;
+    transition: background-color 0.3s ease;
+    margin: 5px;
+}
+
+button:hover {
+    background-color: #0056b3;
+}
+
+#addParticipantsBtn {
+    background-color: #28a745;
+}
+
+#addParticipantsBtn:hover {
+    background-color: #218838;
+}
+
+.wheel-container {
+    position: relative;
+    width: 500px; /* Lebar canvas */
+    height: 500px; /* Tinggi canvas */
+    margin: 40px auto;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+}
+
+#wheelCanvas {
+    background-color: #f0f0f0;
+    border: 5px solid #007bff;
+    border-radius: 50%;
+    box-shadow: 0 0 20px rgba(0, 123, 255, 0.5);
+}
+
+#spinBtn {
+    margin-top: 25px;
+    padding: 15px 40px;
+    font-size: 1.5em;
+    background-color: #dc3545;
+    transform: scale(1);
+    transition: transform 0.2s ease-in-out;
+}
+
+#spinBtn:hover {
+    background-color: #c82333;
+    transform: scale(1.05);
+}
+
+#spinBtn:disabled {
+    background-color: #6c757d;
+    cursor: not-allowed;
+    transform: scale(1);
+}
+
+
+.winner-display {
+    margin-top: 30px;
+    padding: 20px;
+    background-color: #e9f7ef;
+    border: 2px solid #28a745;
+    border-radius: 10px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+}
+
+.winner-display h2 {
+    color: #28a745;
+    margin-bottom: 10px;
+    font-size: 2em;
+}
+
+#winnerName {
+    font-size: 2.5em;
+    font-weight: bold;
+    color: #007bff;
+    text-shadow: 1px 1px 2px rgba(0,0,0,0.1);
+}
+
+#participantCount {
+    font-weight: bold;
+    color: #007bff;
+}
+
+/* Responsif */
+@media (max-width: 768px) {
+    .container {
+        padding: 20px;
+    }
+    h1 {
+        font-size: 2em;
+    }
+    .wheel-container {
+        width: 300px;
+        height: 300px;
+    }
+    #wheelCanvas {
+        width: 300px;
+        height: 300px;
+    }
+    #spinBtn {
+        font-size: 1.2em;
+        padding: 10px 30px;
+    }
+    #winnerName {
+        font-size: 2em;
+    }
+}
