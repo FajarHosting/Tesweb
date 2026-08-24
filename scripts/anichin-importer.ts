@@ -1,11 +1,19 @@
-import dotenv from "dotenv"; dotenv.config({ path: ".env.local" });
+import dotenv from "dotenv";
+
+dotenv.config({
+  path: ".env.local",
+});
+
 import * as cheerio from "cheerio";
 import { createClient } from "@supabase/supabase-js";
 
 const ANICHIN = "https://anichin.cafe";
 
-const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL;
-const SUPABASE_KEY = process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY;
+const SUPABASE_URL =
+  process.env.NEXT_PUBLIC_SUPABASE_URL;
+
+const SUPABASE_KEY =
+  process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY;
 
 if (!SUPABASE_URL || !SUPABASE_KEY) {
   throw new Error(
@@ -17,6 +25,10 @@ const supabase = createClient(
   SUPABASE_URL,
   SUPABASE_KEY
 );
+
+// ======================================
+// TYPES
+// ======================================
 
 type SeriesData = {
   slug: string;
@@ -35,11 +47,17 @@ type EpisodeData = {
   player_url: string | null;
 };
 
+// ======================================
+// UTILITIES
+// ======================================
+
 function sleep(ms: number) {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
-function cleanText(value: string | undefined | null) {
+function cleanText(
+  value: string | undefined | null
+) {
   if (!value) return null;
 
   return value
@@ -48,7 +66,10 @@ function cleanText(value: string | undefined | null) {
     .trim();
 }
 
-function absoluteUrl(url: string, base = ANICHIN) {
+function absoluteUrl(
+  url: string,
+  base = ANICHIN
+) {
   try {
     return new URL(url, base).href;
   } catch {
@@ -60,11 +81,13 @@ function slugFromUrl(url: string) {
   try {
     const pathname = new URL(url).pathname;
 
-    return pathname
-      .replace(/^\/+|\/+$/g, "")
-      .split("/")
-      .filter(Boolean)
-      .pop() || "";
+    return (
+      pathname
+        .replace(/^\/+|\/+$/g, "")
+        .split("/")
+        .filter(Boolean)
+        .pop() || ""
+    );
   } catch {
     return "";
   }
@@ -73,11 +96,16 @@ function slugFromUrl(url: string) {
 function titleFromSlug(slug: string) {
   return slug
     .replace(/[-_]+/g, " ")
-    .replace(/\b\w/g, (char) => char.toUpperCase())
+    .replace(/\b\w/g, (char) =>
+      char.toUpperCase()
+    )
     .trim();
 }
 
-function parseEpisodeNumber(text: string, url = "") {
+function parseEpisodeNumber(
+  text: string,
+  url = ""
+) {
   const source = `${text} ${url}`;
 
   const patterns = [
@@ -101,8 +129,12 @@ function parseEpisodeNumber(text: string, url = "") {
   return null;
 }
 
-function isEpisodeLink(url: string, text: string) {
-  const value = `${url} ${text}`.toLowerCase();
+function isEpisodeLink(
+  url: string,
+  text: string
+) {
+  const value =
+    `${url} ${text}`.toLowerCase();
 
   return (
     /episode/.test(value) ||
@@ -111,6 +143,10 @@ function isEpisodeLink(url: string, text: string) {
   );
 }
 
+// ======================================
+// FETCH HTML
+// ======================================
+
 async function fetchHtml(url: string) {
   console.log(`GET ${url}`);
 
@@ -118,9 +154,14 @@ async function fetchHtml(url: string) {
     headers: {
       "User-Agent":
         "Mozilla/5.0 (Linux; Android 10) AppleWebKit/537.36 Chrome/120 Safari/537.36",
+
       Accept:
         "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
-      "Accept-Language": "id-ID,id;q=0.9,en;q=0.8",
+
+      "Accept-Language":
+        "id-ID,id;q=0.9,en;q=0.8",
+
+      Referer: ANICHIN,
     },
   });
 
@@ -133,11 +174,10 @@ async function fetchHtml(url: string) {
   return await response.text();
 }
 
-/**
- * Mengambil daftar halaman kategori/series.
- *
- * Anichin menyediakan halaman seri dan list-mode.
- */
+// ======================================
+// COLLECT SERIES LINKS
+// ======================================
+
 async function collectSeriesLinks() {
   const sources = [
     `${ANICHIN}/seri/`,
@@ -148,137 +188,233 @@ async function collectSeriesLinks() {
 
   const map = new Map<string, string>();
 
+  console.log("");
+  console.log(
+    "======================================"
+  );
+  console.log("       MENCARI DAFTAR SERIES");
+  console.log(
+    "======================================"
+  );
+
   for (const source of sources) {
     try {
-      const html = await fetchHtml(source);
+      const html =
+        await fetchHtml(source);
+
       const $ = cheerio.load(html);
 
-      $("a[href]").each((_, element) => {
-        const href = $(element).attr("href");
-        if (!href) return;
+      let foundThisPage = 0;
 
-const text =
-  cleanText($(element).text()).trim() ||
-  slugFromUrl(absoluteUrl) ||
-  "Unknown";
+      $("a[href]").each(
+        (_, element) => {
+          const href =
+            $(element).attr("href");
 
-        const absolute = absoluteUrl(href);
+          if (!href) return;
 
-        if (!absolute) return;
+          // Ubah href menjadi URL absolut
+          const absolute =
+            absoluteUrl(href);
 
-        const parsed = new URL(absolute);
+          if (!absolute) return;
 
-        if (parsed.hostname !== "anichin.cafe") {
-          return;
+          let parsed: URL;
+
+          try {
+            parsed = new URL(
+              absolute
+            );
+          } catch {
+            return;
+          }
+
+          // Hanya domain Anichin
+          if (
+            parsed.hostname !==
+              "anichin.cafe" &&
+            parsed.hostname !==
+              "www.anichin.cafe"
+          ) {
+            return;
+          }
+
+          const pathname =
+            parsed.pathname;
+
+          // Kita hanya mau /seri/...
+          if (
+            !pathname.startsWith(
+              "/seri/"
+            )
+          ) {
+            return;
+          }
+
+          // Buang halaman index
+          if (
+            pathname === "/seri/" ||
+            pathname ===
+              "/seri/list-mode/" ||
+            pathname ===
+              "/seri/feed/" ||
+            pathname.includes(
+              "/page/"
+            )
+          ) {
+            return;
+          }
+
+          const slug =
+            slugFromUrl(absolute);
+
+          if (!slug) return;
+
+          // Hindari URL yang bukan series
+          const blockedSlugs = [
+            "page",
+            "genre",
+            "tag",
+            "feed",
+            "list-mode",
+          ];
+
+          if (
+            blockedSlugs.includes(
+              slug.toLowerCase()
+            )
+          ) {
+            return;
+          }
+
+          // Simpan hanya sekali
+          if (!map.has(slug)) {
+            foundThisPage++;
+          }
+
+          map.set(
+            slug,
+            absolute
+          );
         }
+      );
 
-        const pathname = parsed.pathname;
+      console.log(
+        `Dari halaman ini: ${foundThisPage} series baru`
+      );
 
-        /*
-         * Series Anichin biasanya berada pada /category/...
-         */
-        $("a[href]").each((_, element) => {
-  const href = $(element).attr("href");
-
-  if (!href) return;
-
-  const absoluteUrl = absoluteUrlFrom(href);
-
-  if (!absoluteUrl) return;
-
-  const parsed = new URL(absoluteUrl);
-
-  if (parsed.hostname !== "anichin.cafe") {
-    return;
-  }
-
-  const pathname = parsed.pathname;
-
-  if (!pathname.startsWith("/seri/")) {
-    return;
-  }
-
-  if (
-    pathname === "/seri/" ||
-    pathname === "/seri/list-mode/" ||
-    pathname === "/seri/feed/" ||
-    pathname.includes("/page/")
-  ) {
-    return;
-  }
-
-  const slug = slugFromUrl(absoluteUrl);
-
-  if (!slug) return;
-
-  const text =
-    cleanText($(element).text()).trim() ||
-    slug
-      .replace(/-/g, " ")
-      .replace(/\b\w/g, c => c.toUpperCase());
-
-  map.set(slug, absoluteUrl);
-});
-
-        /*
-         * Hindari link yang jelas-jelas bukan halaman series.
-         */
-        if (
-          slug === "page" ||
-          slug === "genre" ||
-          slug === "tag"
-        ) {
-          return;
-        }
-
-        map.set(slug, absolute);
-      });
+      console.log(
+        `Total sementara: ${map.size}`
+      );
 
       await sleep(700);
     } catch (error) {
       console.error(
-        `Gagal membaca sumber ${source}:`,
-        error instanceof Error ? error.message : error
+        `Gagal membaca ${source}:`,
+        error instanceof Error
+          ? error.message
+          : error
       );
     }
   }
 
-  return [...map.entries()].map(([slug, url]) => ({
-    slug,
-    url,
-  }));
+  const result =
+    [...map.entries()].map(
+      ([slug, url]) => ({
+        slug,
+        url,
+      })
+    );
+
+  console.log("");
+  console.log(
+    "======================================"
+  );
+  console.log(
+    `TOTAL SERIES: ${result.length}`
+  );
+  console.log(
+    "======================================"
+  );
+
+  if (result.length > 0) {
+    console.log("");
+    console.log(
+      "Contoh series yang ditemukan:"
+    );
+
+    for (
+      const item of result.slice(
+        0,
+        10
+      )
+    ) {
+      console.log(
+        `- ${item.slug}`
+      );
+
+      console.log(
+        `  ${item.url}`
+      );
+    }
+  }
+
+  return result;
 }
 
-/**
- * Parse halaman series:
- *
- * title
- * cover
- * synopsis
- * status
- * episode links
- */
+// ======================================
+// PARSE SERIES PAGE
+// ======================================
+
 async function parseSeriesPage(
   slug: string,
   url: string
 ): Promise<{
   series: SeriesData;
-  episodes: Omit<EpisodeData, "series_id">[];
+  episodes: Omit<
+    EpisodeData,
+    "series_id"
+  >[];
 }> {
-  const html = await fetchHtml(url);
-  const $ = cheerio.load(html);
+  const html =
+    await fetchHtml(url);
+
+  const $ =
+    cheerio.load(html);
+
+  // ------------------------------------
+  // TITLE
+  // ------------------------------------
 
   let title =
-    cleanText($("h1").first().text()) ||
-    cleanText($("h2").first().text()) ||
-    cleanText($("title").text()) ||
+    cleanText(
+      $("h1")
+        .first()
+        .text()
+    ) ||
+    cleanText(
+      $("h2")
+        .first()
+        .text()
+    ) ||
+    cleanText(
+      $("title").text()
+    ) ||
     titleFromSlug(slug);
 
   title = title
-    .replace(/\s*-\s*Anichin.*$/i, "")
+    .replace(
+      /\s*-\s*Anichin.*$/i,
+      ""
+    )
     .trim();
 
-  let cover: string | null = null;
+  // ------------------------------------
+  // COVER
+  // ------------------------------------
+
+  let cover:
+    string | null = null;
 
   const coverCandidates = [
     ".summary_image img",
@@ -287,26 +423,46 @@ async function parseSeriesPage(
     ".item-summary img",
     ".summary_image",
     "meta[property='og:image']",
+    "meta[name='twitter:image']",
   ];
 
-  for (const selector of coverCandidates) {
-    const element = $(selector).first();
+  for (
+    const selector of coverCandidates
+  ) {
+    const element =
+      $(selector).first();
 
-    if (!element.length) continue;
+    if (!element.length) {
+      continue;
+    }
 
     const value =
       element.attr("content") ||
-      element.attr("data-src") ||
-      element.attr("data-lazy-src") ||
+      element.attr(
+        "data-src"
+      ) ||
+      element.attr(
+        "data-lazy-src"
+      ) ||
       element.attr("src");
 
     if (value) {
-      cover = absoluteUrl(value);
-      if (cover) break;
+      const resolved =
+        absoluteUrl(value);
+
+      if (resolved) {
+        cover = resolved;
+        break;
+      }
     }
   }
 
-  let synopsis: string | null = null;
+  // ------------------------------------
+  // SYNOPSIS
+  // ------------------------------------
+
+  let synopsis:
+    string | null = null;
 
   const synopsisCandidates = [
     ".summary__content",
@@ -317,95 +473,156 @@ async function parseSeriesPage(
     "[class*='description']",
   ];
 
-  for (const selector of synopsisCandidates) {
-    const text = cleanText($(selector).first().text());
+  for (
+    const selector of
+      synopsisCandidates
+  ) {
+    const text =
+      cleanText(
+        $(selector)
+          .first()
+          .text()
+      );
 
-    if (text && text.length > 20) {
+    if (
+      text &&
+      text.length > 20
+    ) {
       synopsis = text;
       break;
     }
   }
 
   if (!synopsis) {
-    const metaDescription = cleanText(
-      $("meta[name='description']").attr("content")
-    );
-
-    synopsis = metaDescription;
+    synopsis =
+      cleanText(
+        $(
+          "meta[name='description']"
+        ).attr("content")
+      );
   }
 
-  const bodyText = cleanText($("body").text()) || "";
+  // ------------------------------------
+  // STATUS
+  // ------------------------------------
+
+  const bodyText =
+    cleanText(
+      $("body").text()
+    ) || "";
 
   let status = "ongoing";
 
-  if (/completed/i.test(bodyText)) {
+  if (
+    /completed|complete|selesai/i.test(
+      bodyText
+    )
+  ) {
     status = "completed";
   }
 
-  /*
-   * Cari semua episode di halaman series.
-   */
-  const episodeMap = new Map<
-    string,
-    Omit<EpisodeData, "series_id">
-  >();
+  // ------------------------------------
+  // EPISODES
+  // ------------------------------------
 
-  $("a[href]").each((_, element) => {
-    const href = $(element).attr("href");
-    if (!href) return;
+  const episodeMap =
+    new Map<
+      string,
+      Omit<
+        EpisodeData,
+        "series_id"
+      >
+    >();
 
-const text =
-  cleanText($(element).text()).trim() ||
-  slugFromUrl(absoluteUrl) ||
-  "Unknown";
+  $("a[href]").each(
+    (_, element) => {
+      const href =
+        $(element).attr("href");
 
-    const episodeUrl = absoluteUrl(href);
+      if (!href) return;
 
-    if (!episodeUrl) return;
+      const episodeUrl =
+        absoluteUrl(href);
 
-    if (!isEpisodeLink(episodeUrl, text)) {
-      return;
+      if (!episodeUrl) {
+        return;
+      }
+
+      let parsed: URL;
+
+      try {
+        parsed =
+          new URL(
+            episodeUrl
+          );
+      } catch {
+        return;
+      }
+
+      if (
+        parsed.hostname !==
+          "anichin.cafe" &&
+        parsed.hostname !==
+          "www.anichin.cafe"
+      ) {
+        return;
+      }
+
+      const text =
+        cleanText(
+          $(element).text()
+        ) ||
+        titleFromSlug(
+          slugFromUrl(
+            episodeUrl
+          )
+        );
+
+      if (
+        !isEpisodeLink(
+          episodeUrl,
+          text
+        )
+      ) {
+        return;
+      }
+
+      const episodeNumber =
+        parseEpisodeNumber(
+          text,
+          episodeUrl
+        );
+
+      if (
+        episodeNumber === null
+      ) {
+        return;
+      }
+
+      episodeMap.set(
+        episodeUrl,
+        {
+          episode_number:
+            episodeNumber,
+
+          title: text,
+
+          episode_url:
+            episodeUrl,
+
+          player_url: null,
+        }
+      );
     }
+  );
 
-    let parsed: URL;
-
-    try {
-      parsed = new URL(episodeUrl);
-    } catch {
-      return;
-    }
-
-    if (parsed.hostname !== "anichin.cafe") {
-      return;
-    }
-
-    const episodeNumber = parseEpisodeNumber(
-      text,
-      episodeUrl
-    );
-
-    if (episodeNumber === null) {
-      return;
-    }
-
-    episodeMap.set(episodeUrl, {
-      episode_number: episodeNumber,
-      title: text,
-      episode_url: episodeUrl,
-      player_url: null,
-    });
-  });
-
-  /*
-   * Beberapa halaman menggunakan pagination.
-   * Untuk importer pertama kita mengambil episode
-   * yang memang tersedia pada halaman series.
-   */
-  const episodes = [...episodeMap.values()]
-    .sort(
-      (a, b) =>
-        a.episode_number - b.episode_number
-    );
+  const episodes =
+    [...episodeMap.values()]
+      .sort(
+        (a, b) =>
+          a.episode_number -
+          b.episode_number
+      );
 
   return {
     series: {
@@ -416,25 +633,38 @@ const text =
       status,
       source_url: url,
     },
+
     episodes,
   };
 }
 
-/**
- * Upsert series berdasarkan slug.
- */
-async function upsertSeries(data: SeriesData) {
-  const { data: row, error } = await supabase
+// ======================================
+// UPSERT SERIES
+// ======================================
+
+async function upsertSeries(
+  data: SeriesData
+) {
+  const {
+    data: row,
+    error,
+  } = await supabase
     .from("series")
     .upsert(
       {
         slug: data.slug,
         title: data.title,
-        cover_url: data.cover_url,
-        synopsis: data.synopsis,
-        status: data.status,
-        source_url: data.source_url,
-        updated_at: new Date().toISOString(),
+        cover_url:
+          data.cover_url,
+        synopsis:
+          data.synopsis,
+        status:
+          data.status,
+        source_url:
+          data.source_url,
+
+        updated_at:
+          new Date().toISOString(),
       },
       {
         onConflict: "slug",
@@ -449,37 +679,64 @@ async function upsertSeries(data: SeriesData) {
     );
   }
 
+  if (!row) {
+    throw new Error(
+      `Series ${data.title} tidak mengembalikan ID`
+    );
+  }
+
   return row.id as number;
 }
 
-/**
- * Upsert episode.
- *
- * Database kita punya unique(series_id, episode_number)
- * sehingga episode yang sama tidak akan diduplikasi.
- */
+// ======================================
+// UPSERT EPISODES
+// ======================================
+
 async function upsertEpisodes(
   seriesId: number,
-  episodes: Omit<EpisodeData, "series_id">[]
+  episodes: Omit<
+    EpisodeData,
+    "series_id"
+  >[]
 ) {
   if (!episodes.length) {
     return;
   }
 
-  const rows = episodes.map((episode) => ({
-    series_id: seriesId,
-    episode_number: episode.episode_number,
-    title: episode.title,
-    episode_url: episode.episode_url,
-    player_url: episode.player_url,
-    updated_at: new Date().toISOString(),
-  }));
+  const rows =
+    episodes.map(
+      (episode) => ({
+        series_id:
+          seriesId,
 
-  const { error } = await supabase
+        episode_number:
+          episode.episode_number,
+
+        title:
+          episode.title,
+
+        episode_url:
+          episode.episode_url,
+
+        player_url:
+          episode.player_url,
+
+        updated_at:
+          new Date().toISOString(),
+      })
+    );
+
+  const {
+    error,
+  } = await supabase
     .from("episodes")
-    .upsert(rows, {
-      onConflict: "series_id,episode_number",
-    });
+    .upsert(
+      rows,
+      {
+        onConflict:
+          "series_id,episode_number",
+      }
+    );
 
   if (error) {
     throw new Error(
@@ -488,47 +745,128 @@ async function upsertEpisodes(
   }
 }
 
-/**
- * IMPORT UTAMA
- */
+// ======================================
+// MAIN IMPORTER
+// ======================================
+
 async function run() {
   console.log("");
-  console.log("======================================");
-  console.log("        NUSADHUA IMPORTER");
-  console.log("======================================");
+
+  console.log(
+    "======================================"
+  );
+
+  console.log(
+    "          NUSADHUA IMPORTER"
+  );
+
+  console.log(
+    "======================================"
+  );
+
   console.log("");
 
-  console.log("Supabase:", SUPABASE_URL);
-  console.log("Source  :", ANICHIN);
+  console.log(
+    "Supabase:",
+    SUPABASE_URL
+  );
+
+  console.log(
+    "Source  :",
+    ANICHIN
+  );
+
   console.log("");
 
-  const seriesLinks = await collectSeriesLinks();
+  // ------------------------------------
+  // COLLECT SERIES
+  // ------------------------------------
+
+  const seriesLinks =
+    await collectSeriesLinks();
+
+  console.log("");
 
   console.log(
     `Ditemukan ${seriesLinks.length} kemungkinan series.`
   );
 
+  if (
+    seriesLinks.length === 0
+  ) {
+    console.log("");
+
+    console.log(
+      "Tidak ada series yang ditemukan."
+    );
+
+    console.log(
+      "Importer dihentikan agar database tidak diproses kosong."
+    );
+
+    return;
+  }
+
+  // ------------------------------------
+  // PROCESS
+  // ------------------------------------
+
   let success = 0;
   let failed = 0;
   let totalEpisodes = 0;
 
-  for (let i = 0; i < seriesLinks.length; i++) {
-    const item = seriesLinks[i];
+  for (
+    let i = 0;
+    i < seriesLinks.length;
+    i++
+  ) {
+    const item =
+      seriesLinks[i];
 
     console.log("");
+    console.log(
+      "--------------------------------------"
+    );
+
     console.log(
       `[${i + 1}/${seriesLinks.length}] ${item.slug}`
     );
 
+    console.log(
+      `URL: ${item.url}`
+    );
+
     try {
-      const parsed = await parseSeriesPage(
-        item.slug,
-        item.url
+      const parsed =
+        await parseSeriesPage(
+          item.slug,
+          item.url
+        );
+
+      console.log(
+        `Title: ${parsed.series.title}`
       );
 
-      const seriesId = await upsertSeries(
-        parsed.series
+      console.log(
+        `Status: ${parsed.series.status}`
       );
+
+      console.log(
+        `Episodes ditemukan: ${parsed.episodes.length}`
+      );
+
+      // ------------------------------
+      // UPLOAD SERIES
+      // ------------------------------
+
+      const seriesId =
+        await upsertSeries(
+          parsed.series
+        );
+
+      // ------------------------------
+      // UPLOAD EPISODES
+      // ------------------------------
 
       await upsertEpisodes(
         seriesId,
@@ -536,14 +874,12 @@ async function run() {
       );
 
       success++;
-      totalEpisodes += parsed.episodes.length;
+
+      totalEpisodes +=
+        parsed.episodes.length;
 
       console.log(
         `OK: ${parsed.series.title}`
-      );
-
-      console.log(
-        `Episodes: ${parsed.episodes.length}`
       );
 
       await sleep(900);
@@ -559,20 +895,57 @@ async function run() {
     }
   }
 
+  // ------------------------------------
+  // SUMMARY
+  // ------------------------------------
+
   console.log("");
-  console.log("======================================");
-  console.log("             SELESAI");
-  console.log("======================================");
-  console.log(`Series berhasil : ${success}`);
-  console.log(`Series gagal    : ${failed}`);
-  console.log(`Episode diproses: ${totalEpisodes}`);
-  console.log("======================================");
+
+  console.log(
+    "======================================"
+  );
+
+  console.log(
+    "               SELESAI"
+  );
+
+  console.log(
+    "======================================"
+  );
+
+  console.log(
+    `Series berhasil : ${success}`
+  );
+
+  console.log(
+    `Series gagal    : ${failed}`
+  );
+
+  console.log(
+    `Episode diproses: ${totalEpisodes}`
+  );
+
+  console.log(
+    "======================================"
+  );
+
   console.log("");
 }
 
-run().catch((error) => {
-  console.error("");
-  console.error("IMPORTER ERROR");
-  console.error(error);
-  process.exit(1);
-});
+// ======================================
+// START
+// ======================================
+
+run().catch(
+  (error) => {
+    console.error("");
+
+    console.error(
+      "IMPORTER ERROR"
+    );
+
+    console.error(error);
+
+    process.exit(1);
+  }
+);
