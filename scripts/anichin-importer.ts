@@ -189,123 +189,90 @@ async function collectSeriesLinks() {
   const map = new Map<string, string>();
 
   console.log("");
-  console.log(
-    "======================================"
-  );
+  console.log("======================================");
   console.log("       MENCARI DAFTAR SERIES");
-  console.log(
-    "======================================"
-  );
+  console.log("======================================");
 
   for (const source of sources) {
     try {
-      const html =
-        await fetchHtml(source);
-
+      const html = await fetchHtml(source);
       const $ = cheerio.load(html);
 
-      let foundThisPage = 0;
+      let found = 0;
 
-      $("a[href]").each(
-        (_, element) => {
-          const href =
-            $(element).attr("href");
+      $("a[href]").each((_, element) => {
+        const href = $(element).attr("href");
 
-          if (!href) return;
+        if (!href) return;
 
-          // Ubah href menjadi URL absolut
-          const absolute =
-            absoluteUrl(href);
+        const absolute = absoluteUrl(href);
 
-          if (!absolute) return;
+        if (!absolute) return;
 
-          let parsed: URL;
+        let parsed: URL;
 
-          try {
-            parsed = new URL(
-              absolute
-            );
-          } catch {
-            return;
-          }
-
-          // Hanya domain Anichin
-          if (
-            parsed.hostname !==
-              "anichin.cafe" &&
-            parsed.hostname !==
-              "www.anichin.cafe"
-          ) {
-            return;
-          }
-
-          const pathname =
-            parsed.pathname;
-
-          // Kita hanya mau /seri/...
-          if (
-            !pathname.startsWith(
-              "/seri/"
-            )
-          ) {
-            return;
-          }
-
-          // Buang halaman index
-          if (
-            pathname === "/seri/" ||
-            pathname ===
-              "/seri/list-mode/" ||
-            pathname ===
-              "/seri/feed/" ||
-            pathname.includes(
-              "/page/"
-            )
-          ) {
-            return;
-          }
-
-          const slug =
-            slugFromUrl(absolute);
-
-          if (!slug) return;
-
-          // Hindari URL yang bukan series
-          const blockedSlugs = [
-            "page",
-            "genre",
-            "tag",
-            "feed",
-            "list-mode",
-          ];
-
-          if (
-            blockedSlugs.includes(
-              slug.toLowerCase()
-            )
-          ) {
-            return;
-          }
-
-          // Simpan hanya sekali
-          if (!map.has(slug)) {
-            foundThisPage++;
-          }
-
-          map.set(
-            slug,
-            absolute
-          );
+        try {
+          parsed = new URL(absolute);
+        } catch {
+          return;
         }
-      );
 
-      console.log(
-        `Dari halaman ini: ${foundThisPage} series baru`
-      );
+        /*
+         * Hanya ambil link dari domain Anichin.
+         */
+        if (parsed.hostname !== "anichin.cafe") {
+          return;
+        }
 
-      console.log(
-        `Total sementara: ${map.size}`
-      );
+        const pathname = parsed.pathname;
+
+        /*
+         * Series Anichin berada di:
+         *
+         * /seri/nama-series/
+         */
+        if (!pathname.startsWith("/seri/")) {
+          return;
+        }
+
+        /*
+         * Buang halaman index / pagination.
+         */
+        if (
+          pathname === "/seri/" ||
+          pathname === "/seri/list-mode/" ||
+          pathname === "/seri/feed/" ||
+          pathname.includes("/page/")
+        ) {
+          return;
+        }
+
+        const slug = slugFromUrl(absolute);
+
+        if (!slug) return;
+
+        /*
+         * Pastikan bukan link episode.
+         */
+        const text =
+          cleanText($(element).text()) ||
+          titleFromSlug(slug);
+
+        if (isEpisodeLink(absolute, text)) {
+          return;
+        }
+
+        if (!map.has(slug)) {
+          map.set(slug, absolute);
+          found++;
+
+          console.log(`  + ${slug}`);
+        }
+      });
+
+      console.log("");
+      console.log(`Sumber: ${source}`);
+      console.log(`Series ditemukan: ${found}`);
 
       await sleep(700);
     } catch (error) {
@@ -318,46 +285,20 @@ async function collectSeriesLinks() {
     }
   }
 
-  const result =
-    [...map.entries()].map(
-      ([slug, url]) => ({
-        slug,
-        url,
-      })
-    );
+  const result = [...map.entries()].map(
+    ([slug, url]) => ({
+      slug,
+      url,
+    })
+  );
 
   console.log("");
+  console.log("======================================");
   console.log(
-    "======================================"
+    `TOTAL SERIES UNIK: ${result.length}`
   );
-  console.log(
-    `TOTAL SERIES: ${result.length}`
-  );
-  console.log(
-    "======================================"
-  );
-
-  if (result.length > 0) {
-    console.log("");
-    console.log(
-      "Contoh series yang ditemukan:"
-    );
-
-    for (
-      const item of result.slice(
-        0,
-        10
-      )
-    ) {
-      console.log(
-        `- ${item.slug}`
-      );
-
-      console.log(
-        `  ${item.url}`
-      );
-    }
-  }
+  console.log("======================================");
+  console.log("");
 
   return result;
 }
