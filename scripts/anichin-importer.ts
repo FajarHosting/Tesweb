@@ -1,19 +1,26 @@
 import dotenv from "dotenv";
+import * as cheerio from "cheerio";
+import { createClient } from "@supabase/supabase-js";
 
 dotenv.config({
   path: ".env.local",
 });
 
-import * as cheerio from "cheerio";
-import { createClient } from "@supabase/supabase-js";
+// ======================================
+// CONFIG
+// ======================================
 
 const ANICHIN = "https://anichin.cafe";
+const ANICHIN_HOSTS = new Set([
+  "anichin.cafe",
+  "www.anichin.cafe",
+]);
 
 const SUPABASE_URL =
-  process.env.NEXT_PUBLIC_SUPABASE_URL;
+  process.env.NEXT_PUBLIC_SUPABASE_URL?.trim();
 
 const SUPABASE_KEY =
-  process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY;
+  process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY?.trim();
 
 if (!SUPABASE_URL || !SUPABASE_KEY) {
   throw new Error(
@@ -26,9 +33,20 @@ const supabase = createClient(
   SUPABASE_KEY
 );
 
+// Berapa maksimal halaman pagination daftar series
+const MAX_LIST_PAGES = 100;
+
+// Delay antar request
+const REQUEST_DELAY = 700;
+
 // ======================================
 // TYPES
 // ======================================
+
+type SeriesLink = {
+  slug: string;
+  url: string;
+};
 
 type SeriesData = {
   slug: string;
@@ -48,7 +66,7 @@ type EpisodeData = {
 };
 
 // ======================================
-// UTILITIES
+// UTILITY
 // ======================================
 
 function sleep(ms: number) {
@@ -57,43 +75,56 @@ function sleep(ms: number) {
 
 function cleanText(
   value: string | undefined | null
-) {
+): string | null {
   if (!value) return null;
 
-  return value
+  const result = value
     .replace(/\s+/g, " ")
     .replace(/\u00a0/g, " ")
     .trim();
+
+  return result || null;
 }
 
 function absoluteUrl(
-  url: string,
+  value: string,
   base = ANICHIN
-) {
+): string | null {
   try {
-    return new URL(url, base).href;
+    return new URL(value, base).href;
   } catch {
     return null;
   }
 }
 
-function slugFromUrl(url: string) {
+function isAnichinUrl(url: string): boolean {
+  try {
+    const parsed = new URL(url);
+
+    return ANICHIN_HOSTS.has(
+      parsed.hostname.toLowerCase()
+    );
+  } catch {
+    return false;
+  }
+}
+
+function slugFromUrl(url: string): string {
   try {
     const pathname = new URL(url).pathname;
 
-    return (
-      pathname
-        .replace(/^\/+|\/+$/g, "")
-        .split("/")
-        .filter(Boolean)
-        .pop() || ""
-    );
+    const parts = pathname
+      .replace(/^\/+|\/+$/g, "")
+      .split("/")
+      .filter(Boolean);
+
+    return parts[parts.length - 1] || "";
   } catch {
     return "";
   }
 }
 
-function titleFromSlug(slug: string) {
+function titleFromSlug(slug: string): string {
   return slug
     .replace(/[-_]+/g, " ")
     .replace(/\b\w/g, (char) =>
@@ -102,27 +133,32 @@ function titleFromSlug(slug: string) {
     .trim();
 }
 
+// ======================================
+// EPISODE HELPERS
+// ======================================
+
 function parseEpisodeNumber(
   text: string,
   url = ""
-) {
+): number | null {
   const source = `${text} ${url}`;
 
   const patterns = [
     /episode[\s._-]*(\d+(?:\.\d+)?)/i,
-    /ep[\s._-]*(\d+(?:\.\d+)?)/i,
-    /eps[\s._-]*(\d+(?:\.\d+)?)/i,
+    /\bep[\s._-]*(\d+(?:\.\d+)?)/i,
+    /\beps[\s._-]*(\d+(?:\.\d+)?)/i,
+    /episode[-_]?(\d+(?:\.\d+)?)/i,
   ];
 
   for (const pattern of patterns) {
     const match = source.match(pattern);
 
-    if (match) {
-      const number = Number(match[1]);
+    if (!match) continue;
 
-      if (Number.isFinite(number)) {
-        return number;
-      }
+    const number = Number(match[1]);
+
+    if (Number.isFinite(number)) {
+      return number;
     }
   }
 
@@ -132,36 +168,119 @@ function parseEpisodeNumber(
 function isEpisodeLink(
   url: string,
   text: string
-) {
+): boolean {
   const value =
     `${url} ${text}`.toLowerCase();
 
   return (
-    /episode/.test(value) ||
-    /\bep\b/.test(value) ||
-    /\beps\b/.test(value)
+    /\bepisode\b/.test(value) ||
+    /\bep[\s._-]*\d/.test(value) ||
+    /\beps[\s._-]*\d/.test(value)
   );
+}
+
+// ======================================
+// SERIES URL CHECK
+// ======================================
+
+function isSeriesPageUrl(
+  url: string
+): boolean {
+  try {
+    const parsed = new URL(url);
+
+    if (
+      !ANICHIN_HOSTS.has(
+        parsed.hostname.toLowerCase()
+      )
+    ) {
+      return false;
+    }
+
+    const pathname =
+      parsed.pathname.replace(/\/+$/, "") || "/";
+
+    // Harus /seri/...
+    if (!pathname.startsWith("/seri/")) {
+      return false;
+    }
+
+    // Buang index
+    if (
+      pathname === "/seri" ||
+      pathname === "/seri/list-mode" ||
+      pathname === "/seri/feed"
+    ) {
+      return false;
+    }
+
+    // Buang pagination
+    if (
+      /^\/seri\/page\/\d+$/i.test(
+        pathname
+      )
+    ) {
+      return false;
+    }
+
+    if (
+      pathname.includes("/feed") ||
+      pathname.includes("/page/")
+    ) {
+      return false;
+    }
+
+    const slug = slugFromUrl(url);
+
+    if (!slug) {
+      return false;
+    }
+
+    const invalidSlugs = new Set([
+      "seri",
+      "list-mode",
+      "feed",
+      "page",
+      "genre",
+      "tag",
+      "search",
+    ]);
+
+    if (
+      invalidSlugs.has(
+        slug.toLowerCase()
+      )
+    ) {
+      return false;
+    }
+
+    return true;
+  } catch {
+    return false;
+  }
 }
 
 // ======================================
 // FETCH HTML
 // ======================================
 
-async function fetchHtml(url: string) {
+async function fetchHtml(
+  url: string
+): Promise<string> {
   console.log(`GET ${url}`);
 
   const response = await fetch(url, {
     headers: {
       "User-Agent":
-        "Mozilla/5.0 (Linux; Android 10) AppleWebKit/537.36 Chrome/120 Safari/537.36",
+        "Mozilla/5.0 (Linux; Android 10) AppleWebKit/537.36 Chrome/120 Mobile Safari/537.36",
 
       Accept:
         "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
 
       "Accept-Language":
-        "id-ID,id;q=0.9,en;q=0.8",
+        "id-ID,id;q=0.9,en-US;q=0.8,en;q=0.7",
 
-      Referer: ANICHIN,
+      Referer: ANICHIN + "/",
     },
   });
 
@@ -171,113 +290,223 @@ async function fetchHtml(url: string) {
     );
   }
 
-  return await response.text();
+  return response.text();
 }
 
 // ======================================
-// COLLECT SERIES LINKS
+// EXTRACT SERIES FROM ONE PAGE
 // ======================================
 
-async function collectSeriesLinks() {
-  const sources = [
+function extractSeriesLinks(
+  html: string
+): SeriesLink[] {
+  const $ = cheerio.load(html);
+
+  const map =
+    new Map<string, SeriesLink>();
+
+  $("a[href]").each(
+    (_, element) => {
+      const href =
+        $(element).attr("href");
+
+      if (!href) return;
+
+      const url =
+        absoluteUrl(href);
+
+      if (!url) return;
+
+      if (!isSeriesPageUrl(url)) {
+        return;
+      }
+
+      const slug =
+        slugFromUrl(url);
+
+      if (!slug) return;
+
+      map.set(slug, {
+        slug,
+        url,
+      });
+    }
+  );
+
+  return [...map.values()];
+}
+
+// ======================================
+// FIND PAGINATION LINKS
+// ======================================
+
+function extractPaginationLinks(
+  html: string
+): string[] {
+  const $ = cheerio.load(html);
+
+  const links =
+    new Set<string>();
+
+  $("a[href]").each(
+    (_, element) => {
+      const href =
+        $(element).attr("href");
+
+      if (!href) return;
+
+      const url =
+        absoluteUrl(href);
+
+      if (!url) return;
+
+      if (!isAnichinUrl(url)) {
+        return;
+      }
+
+      let parsed: URL;
+
+      try {
+        parsed = new URL(url);
+      } catch {
+        return;
+      }
+
+      const pathname =
+        parsed.pathname;
+
+      /*
+       * Contoh:
+       * /seri/page/2/
+       * /ongoing/page/2/
+       * /completed/page/2/
+       */
+      if (
+        /\/page\/\d+\/?$/i.test(
+          pathname
+        )
+      ) {
+        links.add(url);
+      }
+    }
+  );
+
+  return [...links];
+}
+
+// ======================================
+// COLLECT ALL SERIES
+// ======================================
+
+async function collectSeriesLinks(): Promise<
+  SeriesLink[]
+> {
+  const startPages = [
     `${ANICHIN}/seri/`,
     `${ANICHIN}/seri/list-mode/`,
     `${ANICHIN}/ongoing/`,
     `${ANICHIN}/completed/`,
   ];
 
-  const map = new Map<string, string>();
+  const visited =
+    new Set<string>();
+
+  const queue =
+    [...startPages];
+
+  const seriesMap =
+    new Map<string, SeriesLink>();
 
   console.log("");
-  console.log("======================================");
-  console.log("       MENCARI DAFTAR SERIES");
-  console.log("======================================");
+  console.log(
+    "======================================"
+  );
+  console.log(
+    "        MENCARI DAFTAR SERIES"
+  );
+  console.log(
+    "======================================"
+  );
+  console.log("");
 
-  for (const source of sources) {
+  while (
+    queue.length > 0 &&
+    visited.size < MAX_LIST_PAGES
+  ) {
+    const current =
+      queue.shift()!;
+
+    if (visited.has(current)) {
+      continue;
+    }
+
+    visited.add(current);
+
     try {
-      const html = await fetchHtml(source);
-      const $ = cheerio.load(html);
+      const html =
+        await fetchHtml(current);
 
-      let found = 0;
+      const found =
+        extractSeriesLinks(html);
 
-      $("a[href]").each((_, element) => {
-        const href = $(element).attr("href");
+      let added = 0;
 
-        if (!href) return;
-
-        const absolute = absoluteUrl(href);
-
-        if (!absolute) return;
-
-        let parsed: URL;
-
-        try {
-          parsed = new URL(absolute);
-        } catch {
-          return;
-        }
-
-        /*
-         * Hanya ambil link dari domain Anichin.
-         */
-        if (parsed.hostname !== "anichin.cafe") {
-          return;
-        }
-
-        const pathname = parsed.pathname;
-
-        /*
-         * Series Anichin berada di:
-         *
-         * /seri/nama-series/
-         */
-        if (!pathname.startsWith("/seri/")) {
-          return;
-        }
-
-        /*
-         * Buang halaman index / pagination.
-         */
+      for (const item of found) {
         if (
-          pathname === "/seri/" ||
-          pathname === "/seri/list-mode/" ||
-          pathname === "/seri/feed/" ||
-          pathname.includes("/page/")
+          !seriesMap.has(
+            item.slug
+          )
         ) {
-          return;
+          seriesMap.set(
+            item.slug,
+            item
+          );
+
+          added++;
+
+          console.log(
+            `  + ${item.slug}`
+          );
         }
-
-        const slug = slugFromUrl(absolute);
-
-        if (!slug) return;
-
-        /*
-         * Pastikan bukan link episode.
-         */
-        const text =
-          cleanText($(element).text()) ||
-          titleFromSlug(slug);
-
-        if (isEpisodeLink(absolute, text)) {
-          return;
-        }
-
-        if (!map.has(slug)) {
-          map.set(slug, absolute);
-          found++;
-
-          console.log(`  + ${slug}`);
-        }
-      });
+      }
 
       console.log("");
-      console.log(`Sumber: ${source}`);
-      console.log(`Series ditemukan: ${found}`);
+      console.log(
+        `Halaman: ${current}`
+      );
+      console.log(
+        `Series baru: ${added}`
+      );
+      console.log(
+        `Total unik: ${seriesMap.size}`
+      );
 
-      await sleep(700);
+      /*
+       * Cari halaman pagination.
+       */
+      const pagination =
+        extractPaginationLinks(
+          html
+        );
+
+      for (const page of pagination) {
+        if (
+          !visited.has(page) &&
+          !queue.includes(page) &&
+          visited.size +
+            queue.length <
+            MAX_LIST_PAGES
+        ) {
+          queue.push(page);
+        }
+      }
+
+      await sleep(
+        REQUEST_DELAY
+      );
     } catch (error) {
       console.error(
-        `Gagal membaca ${source}:`,
+        `Gagal membaca ${current}:`,
         error instanceof Error
           ? error.message
           : error
@@ -285,19 +514,22 @@ async function collectSeriesLinks() {
     }
   }
 
-  const result = [...map.entries()].map(
-    ([slug, url]) => ({
-      slug,
-      url,
-    })
-  );
+  const result =
+    [...seriesMap.values()];
 
   console.log("");
-  console.log("======================================");
+  console.log(
+    "======================================"
+  );
   console.log(
     `TOTAL SERIES UNIK: ${result.length}`
   );
-  console.log("======================================");
+  console.log(
+    `HALAMAN DICEK    : ${visited.size}`
+  );
+  console.log(
+    "======================================"
+  );
   console.log("");
 
   return result;
@@ -323,20 +555,23 @@ async function parseSeriesPage(
   const $ =
     cheerio.load(html);
 
-  // ------------------------------------
+  // ====================================
   // TITLE
-  // ------------------------------------
+  // ====================================
 
   let title =
     cleanText(
-      $("h1")
-        .first()
-        .text()
+      $("h1").first().text()
     ) ||
     cleanText(
-      $("h2")
-        .first()
-        .text()
+      $(".post-title").first().text()
+    ) ||
+    cleanText(
+      $(".entry-title").first().text()
+    ) ||
+    cleanText(
+      $("meta[property='og:title']")
+        .attr("content")
     ) ||
     cleanText(
       $("title").text()
@@ -345,30 +580,33 @@ async function parseSeriesPage(
 
   title = title
     .replace(
-      /\s*-\s*Anichin.*$/i,
+      /\s*[-|]\s*Anichin.*$/i,
       ""
     )
     .trim();
 
-  // ------------------------------------
+  // ====================================
   // COVER
-  // ------------------------------------
+  // ====================================
 
   let cover:
     string | null = null;
 
-  const coverCandidates = [
-    ".summary_image img",
-    ".thumb img",
-    ".c-tabs-item__content .tab-thumb img",
-    ".item-summary img",
-    ".summary_image",
+  const coverSelectors = [
     "meta[property='og:image']",
     "meta[name='twitter:image']",
+    ".summary_image img",
+    ".summary_image",
+    ".thumb img",
+    ".item-summary img",
+    ".tab-thumb img",
+    ".c-tabs-item__content img",
+    "img",
   ];
 
   for (
-    const selector of coverCandidates
+    const selector of
+      coverSelectors
   ) {
     const element =
       $(selector).first();
@@ -380,43 +618,46 @@ async function parseSeriesPage(
     const value =
       element.attr("content") ||
       element.attr(
-        "data-src"
+        "data-lazy-src"
       ) ||
       element.attr(
-        "data-lazy-src"
+        "data-src"
       ) ||
       element.attr("src");
 
-    if (value) {
-      const resolved =
-        absoluteUrl(value);
+    if (!value) {
+      continue;
+    }
 
-      if (resolved) {
-        cover = resolved;
-        break;
-      }
+    const resolved =
+      absoluteUrl(value);
+
+    if (resolved) {
+      cover = resolved;
+      break;
     }
   }
 
-  // ------------------------------------
+  // ====================================
   // SYNOPSIS
-  // ------------------------------------
+  // ====================================
 
   let synopsis:
     string | null = null;
 
-  const synopsisCandidates = [
+  const synopsisSelectors = [
     ".summary__content",
     ".summary_content",
     ".description",
     ".desc",
     ".tab-summary",
+    ".summary_content p",
     "[class*='description']",
   ];
 
   for (
     const selector of
-      synopsisCandidates
+      synopsisSelectors
   ) {
     const text =
       cleanText(
@@ -443,28 +684,36 @@ async function parseSeriesPage(
       );
   }
 
-  // ------------------------------------
+  // ====================================
   // STATUS
-  // ------------------------------------
+  // ====================================
 
   const bodyText =
     cleanText(
       $("body").text()
     ) || "";
 
-  let status = "ongoing";
+  let status =
+    "ongoing";
 
   if (
-    /completed|complete|selesai/i.test(
+    /\bcompleted\b/i.test(
+      bodyText
+    ) ||
+    /\bcomplete\b/i.test(
+      bodyText
+    ) ||
+    /\bselesai\b/i.test(
       bodyText
     )
   ) {
-    status = "completed";
+    status =
+      "completed";
   }
 
-  // ------------------------------------
+  // ====================================
   // EPISODES
-  // ------------------------------------
+  // ====================================
 
   const episodeMap =
     new Map<
@@ -489,22 +738,10 @@ async function parseSeriesPage(
         return;
       }
 
-      let parsed: URL;
-
-      try {
-        parsed =
-          new URL(
-            episodeUrl
-          );
-      } catch {
-        return;
-      }
-
       if (
-        parsed.hostname !==
-          "anichin.cafe" &&
-        parsed.hostname !==
-          "www.anichin.cafe"
+        !isAnichinUrl(
+          episodeUrl
+        )
       ) {
         return;
       }
@@ -546,12 +783,14 @@ async function parseSeriesPage(
           episode_number:
             episodeNumber,
 
-          title: text,
+          title:
+            text,
 
           episode_url:
             episodeUrl,
 
-          player_url: null,
+          player_url:
+            null,
         }
       );
     }
@@ -569,10 +808,12 @@ async function parseSeriesPage(
     series: {
       slug,
       title,
-      cover_url: cover,
+      cover_url:
+        cover,
       synopsis,
       status,
-      source_url: url,
+      source_url:
+        url,
     },
 
     episodes,
@@ -585,7 +826,7 @@ async function parseSeriesPage(
 
 async function upsertSeries(
   data: SeriesData
-) {
+): Promise<number> {
   const {
     data: row,
     error,
@@ -593,14 +834,21 @@ async function upsertSeries(
     .from("series")
     .upsert(
       {
-        slug: data.slug,
-        title: data.title,
+        slug:
+          data.slug,
+
+        title:
+          data.title,
+
         cover_url:
           data.cover_url,
+
         synopsis:
           data.synopsis,
+
         status:
           data.status,
+
         source_url:
           data.source_url,
 
@@ -608,7 +856,8 @@ async function upsertSeries(
           new Date().toISOString(),
       },
       {
-        onConflict: "slug",
+        onConflict:
+          "slug",
       }
     )
     .select("id")
@@ -640,7 +889,9 @@ async function upsertEpisodes(
     "series_id"
   >[]
 ) {
-  if (!episodes.length) {
+  if (
+    episodes.length === 0
+  ) {
     return;
   }
 
@@ -687,24 +938,20 @@ async function upsertEpisodes(
 }
 
 // ======================================
-// MAIN IMPORTER
+// MAIN
 // ======================================
 
 async function run() {
   console.log("");
-
   console.log(
     "======================================"
   );
-
   console.log(
     "          NUSADHUA IMPORTER"
   );
-
   console.log(
     "======================================"
   );
-
   console.log("");
 
   console.log(
@@ -719,14 +966,12 @@ async function run() {
 
   console.log("");
 
-  // ------------------------------------
-  // COLLECT SERIES
-  // ------------------------------------
+  // ====================================
+  // COLLECT
+  // ====================================
 
   const seriesLinks =
     await collectSeriesLinks();
-
-  console.log("");
 
   console.log(
     `Ditemukan ${seriesLinks.length} kemungkinan series.`
@@ -736,21 +981,18 @@ async function run() {
     seriesLinks.length === 0
   ) {
     console.log("");
-
     console.log(
-      "Tidak ada series yang ditemukan."
+      "TIDAK ADA SERIES."
     );
-
     console.log(
-      "Importer dihentikan agar database tidak diproses kosong."
+      "Importer dihentikan."
     );
-
     return;
   }
 
-  // ------------------------------------
+  // ====================================
   // PROCESS
-  // ------------------------------------
+  // ====================================
 
   let success = 0;
   let failed = 0;
@@ -785,29 +1027,21 @@ async function run() {
         );
 
       console.log(
-        `Title: ${parsed.series.title}`
+        `Title   : ${parsed.series.title}`
       );
 
       console.log(
-        `Status: ${parsed.series.status}`
+        `Status  : ${parsed.series.status}`
       );
 
       console.log(
-        `Episodes ditemukan: ${parsed.episodes.length}`
+        `Episodes: ${parsed.episodes.length}`
       );
-
-      // ------------------------------
-      // UPLOAD SERIES
-      // ------------------------------
 
       const seriesId =
         await upsertSeries(
           parsed.series
         );
-
-      // ------------------------------
-      // UPLOAD EPISODES
-      // ------------------------------
 
       await upsertEpisodes(
         seriesId,
@@ -823,7 +1057,9 @@ async function run() {
         `OK: ${parsed.series.title}`
       );
 
-      await sleep(900);
+      await sleep(
+        REQUEST_DELAY
+      );
     } catch (error) {
       failed++;
 
@@ -836,20 +1072,17 @@ async function run() {
     }
   }
 
-  // ------------------------------------
+  // ====================================
   // SUMMARY
-  // ------------------------------------
+  // ====================================
 
   console.log("");
-
   console.log(
     "======================================"
   );
-
   console.log(
     "               SELESAI"
   );
-
   console.log(
     "======================================"
   );
@@ -869,7 +1102,6 @@ async function run() {
   console.log(
     "======================================"
   );
-
   console.log("");
 }
 
@@ -880,13 +1112,10 @@ async function run() {
 run().catch(
   (error) => {
     console.error("");
-
     console.error(
       "IMPORTER ERROR"
     );
-
     console.error(error);
-
     process.exit(1);
   }
 );
