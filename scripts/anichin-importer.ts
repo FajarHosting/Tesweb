@@ -174,9 +174,18 @@ async function collectSeriesLinks() {
         /*
          * Series Anichin biasanya berada pada /category/...
          */
-        if (!pathname.startsWith("/category/")) {
-          return;
-        }
+        if (!pathname.startsWith("/seri/")) {
+  return;
+}
+
+if (
+  pathname === "/seri/" ||
+  pathname === "/seri/list-mode/" ||
+  pathname === "/seri/feed/" ||
+  pathname.includes("/page/")
+) {
+  return;
+}
 
         const slug = slugFromUrl(absolute);
 
