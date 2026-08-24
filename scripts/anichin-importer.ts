@@ -1,11 +1,16 @@
-import "dotenv/config";
+import dotenv from "dotenv";
+
+dotenv.config({
+  path: ".env.local",
+});
+
 import * as cheerio from "cheerio";
 import { createClient } from "@supabase/supabase-js";
 
 const ANICHIN = "https://anichin.cafe";
 
 const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL;
-const SUPABASE_KEY = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+const SUPABASE_KEY = process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY;
 
 if (!SUPABASE_URL || !SUPABASE_KEY) {
   throw new Error(
