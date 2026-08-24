@@ -155,9 +155,12 @@ async function collectSeriesLinks() {
 
       $("a[href]").each((_, element) => {
         const href = $(element).attr("href");
-        const text = cleanText($(element).text());
+        if (!href) return;
 
-        if (!href || !text) return;
+const text =
+  cleanText($(element).text()).trim() ||
+  slugFromUrl(absoluteUrl) ||
+  "Unknown";
 
         const absolute = absoluteUrl(href);
 
@@ -174,22 +177,48 @@ async function collectSeriesLinks() {
         /*
          * Series Anichin biasanya berada pada /category/...
          */
-        if (!pathname.startsWith("/seri/")) {
-  return;
-}
+        $("a[href]").each((_, element) => {
+  const href = $(element).attr("href");
 
-if (
-  pathname === "/seri/" ||
-  pathname === "/seri/list-mode/" ||
-  pathname === "/seri/feed/" ||
-  pathname.includes("/page/")
-) {
-  return;
-}
+  if (!href) return;
 
-        const slug = slugFromUrl(absolute);
+  const absoluteUrl = absoluteUrlFrom(href);
 
-        if (!slug) return;
+  if (!absoluteUrl) return;
+
+  const parsed = new URL(absoluteUrl);
+
+  if (parsed.hostname !== "anichin.cafe") {
+    return;
+  }
+
+  const pathname = parsed.pathname;
+
+  if (!pathname.startsWith("/seri/")) {
+    return;
+  }
+
+  if (
+    pathname === "/seri/" ||
+    pathname === "/seri/list-mode/" ||
+    pathname === "/seri/feed/" ||
+    pathname.includes("/page/")
+  ) {
+    return;
+  }
+
+  const slug = slugFromUrl(absoluteUrl);
+
+  if (!slug) return;
+
+  const text =
+    cleanText($(element).text()).trim() ||
+    slug
+      .replace(/-/g, " ")
+      .replace(/\b\w/g, c => c.toUpperCase());
+
+  map.set(slug, absoluteUrl);
+});
 
         /*
          * Hindari link yang jelas-jelas bukan halaman series.
@@ -323,9 +352,12 @@ async function parseSeriesPage(
 
   $("a[href]").each((_, element) => {
     const href = $(element).attr("href");
-    const text = cleanText($(element).text());
+    if (!href) return;
 
-    if (!href || !text) return;
+const text =
+  cleanText($(element).text()).trim() ||
+  slugFromUrl(absoluteUrl) ||
+  "Unknown";
 
     const episodeUrl = absoluteUrl(href);
 
