@@ -1,9 +1,4 @@
-import dotenv from "dotenv";
-
-dotenv.config({
-  path: ".env.local",
-});
-
+import dotenv from "dotenv"; dotenv.config({ path: ".env.local" });
 import * as cheerio from "cheerio";
 import { createClient } from "@supabase/supabase-js";
 
