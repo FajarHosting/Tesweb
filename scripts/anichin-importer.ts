@@ -22,6 +22,8 @@ const SUPABASE_URL =
 const SUPABASE_KEY =
   process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY?.trim();
 
+const SUPABASE_KEY = process.env.SUPABASE_SECRET_KEY?.trim();
+
 if (!SUPABASE_URL || !SUPABASE_KEY) {
   throw new Error(
     "NEXT_PUBLIC_SUPABASE_URL / NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY belum ada di .env.local"
